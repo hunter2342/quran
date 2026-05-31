@@ -1,37 +1,119 @@
-/* Custom Scrollbar for the Control Panel */
+/* =========================================
+   Base & Resets
+   ========================================= */
+* {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* خلفية منقطة احترافية لمساحة العمل */
+.pattern-dots {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* =========================================
+   Custom Scrollbars (Webkit)
+   ========================================= */
 .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
     background: #1f2937; /* gray-800 */
+    border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
     background: #374151; /* gray-700 */
     border-radius: 10px;
+    transition: background 0.3s ease;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #4b5563; /* gray-600 */
+    background: #10b981; /* emerald-500 */
 }
 
-/* 9:16 Aspect Ratio for Live Preview Container */
-#preview-wrapper {
-    width: auto;
-    height: 100%;
-    aspect-ratio: 9 / 16;
-    max-height: calc(100vh - 120px);
+/* =========================================
+   Custom UI Controls (Inputs & Selects)
+   ========================================= */
+.custom-input, .custom-select {
+    background-color: #111827; /* gray-900 */
+    border: 1px solid #374151; /* gray-700 */
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    color: #f3f4f6; /* gray-100 */
+    outline: none;
+    transition: all 0.2s ease-in-out;
+}
+.custom-input:focus, .custom-select:focus {
+    border-color: #10b981; /* emerald-500 */
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
 
-/* Fade-in Animation for text changes */
+/* =========================================
+   Advanced Range Sliders (Cross-browser)
+   ========================================= */
+.custom-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: #374151; /* gray-700 */
+    border-radius: 4px;
+    outline: none;
+}
+.custom-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #10b981; /* emerald-500 */
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    transition: transform 0.1s;
+}
+.custom-range::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+.custom-range::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #10b981;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    transition: transform 0.1s;
+}
+.custom-range::-moz-range-thumb:hover {
+    transform: scale(1.2);
+}
+
+/* =========================================
+   Animations & Transitions
+   ========================================= */
 .fade-in {
-    animation: fadeIn 0.4s ease-in-out;
+    animation: fadeInSmooth 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+@keyframes fadeInSmooth {
+    0% { 
+        opacity: 0; 
+        transform: translateY(15px) scale(0.98); 
+    }
+    100% { 
+        opacity: 1; 
+        transform: translateY(0) scale(1); 
+    }
 }
 
-/* Base utilities */
-.drop-shadow-2xl {
-    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.8));
+/* Pulse effect for audio recording */
+.audio-active-pulse {
+    animation: pulseGlow 2s infinite;
+}
+
+@keyframes pulseGlow {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
