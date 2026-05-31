@@ -33,7 +33,7 @@ const DOM = {
     canvas: document.getElementById('export-canvas'),
 };
 
-// حل مشكلة CORS للصوتيات
+// حل مشكلة CORS للصوتيات (مهم جداً للتصدير)
 DOM.audioPlayer.crossOrigin = "anonymous";
 
 let isPlaying = false;
@@ -61,11 +61,12 @@ async function loadSurahs() {
         updateAyahLimits();
     } catch (error) {
         DOM.surahSelect.innerHTML = '<option>خطأ في تحميل السور</option>';
+        console.error("خطأ في جلب السور:", error);
     }
 }
 loadSurahs();
 
-// تحديث الحد الأقصى للآيات
+// تحديث الحد الأقصى للآيات عند تغيير السورة
 DOM.surahSelect.addEventListener('change', updateAyahLimits);
 async function updateAyahLimits() {
     const surahNum = DOM.surahSelect.value;
@@ -84,7 +85,7 @@ async function updateAyahLimits() {
     }
 }
 
-// --- 2. جلب نص الآيات والملف الصوتي (إصلاح وتطوير) ---
+// --- 2. جلب نص الآيات والملف الصوتي ---
 DOM.fetchBtn.addEventListener('click', async () => {
     const surah = DOM.surahSelect.value;
     const edition = DOM.editionSelect.value;
@@ -134,15 +135,16 @@ function loadTrack(index) {
     
     // إضافة أنيميشن بسيط عند تغير النص
     DOM.previewQuran.classList.remove('fade-in');
-    void DOM.previewQuran.offsetWidth; 
+    void DOM.previewQuran.offsetWidth; // Trigger reflow
     DOM.previewQuran.classList.add('fade-in');
 
     // تحديث النص (آية واحدة مع رقمها)
     DOM.previewQuran.innerText = `${currentAyah.text} ﴿${currentAyah.numberInSurah}﴾`;
     DOM.previewSub.innerText = `سورة ${surahGlobalName}`;
     
-    // تحديث الصوت
-    DOM.audioPlayer.src = currentAyah.audio;
+    // 🌟 الإصلاح السحري لمشكلة الـ CORS باستخدام خدمة Proxy مجانية 🌟
+    const proxyUrl = "https://api.allorigins.win/raw?url=";
+    DOM.audioPlayer.src = proxyUrl + encodeURIComponent(currentAyah.audio);
     
     // إذا كان في وضع التشغيل أو جاري التصدير، قم بتشغيل المقطع الجديد
     if (isPlaying || (mediaRecorder && mediaRecorder.state === 'recording')) {
@@ -246,12 +248,13 @@ DOM.exportBtn.addEventListener('click', () => {
         source.connect(audioCtx.destination); // للسماع أثناء التصدير
         combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
     } catch (e) {
-        console.warn("تنبيه: لم يتم دمج الصوت بسبب قيود المتصفح", e);
+        console.warn("تنبيه: قد لا يتم دمج الصوت في بعض المتصفحات بسبب قيود الأمان", e);
     }
 
     try {
         mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9' });
     } catch (e) {
+        // Fallback إذا كان ترميز vp9 غير مدعوم
         mediaRecorder = new MediaRecorder(combinedStream);
     }
 
@@ -266,7 +269,7 @@ DOM.exportBtn.addEventListener('click', () => {
     if(!DOM.bgVideo.classList.contains('hidden')) { DOM.bgVideo.currentTime = 0; DOM.bgVideo.play(); }
     
     currentTrackIndex = 0;
-    loadTrack(0); // ستبدأ تشغيل الصوت تلقائياً بسبب المنطق داخل الدالة
+    loadTrack(0); 
     
     mediaRecorder.start();
 
@@ -276,10 +279,10 @@ DOM.exportBtn.addEventListener('click', () => {
         else if (!DOM.bgImage.classList.contains('hidden')) ctx.drawImage(DOM.bgImage, 0, 0, width, height);
         else { ctx.fillStyle = '#111827'; ctx.fillRect(0, 0, width, height); }
 
-        // التعتيم
+        // التعتيم لزيادة وضوح النص
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; ctx.fillRect(0, 0, width, height);
 
-        // إعدادات النص العربي للكانفاس (إصلاح خطأ التقطيع)
+        // إعدادات النص العربي للكانفاس
         ctx.textAlign = 'center'; 
         ctx.textBaseline = 'middle';
         ctx.direction = 'rtl'; 
@@ -300,8 +303,10 @@ DOM.exportBtn.addEventListener('click', () => {
         const currentText = DOM.previewQuran.innerText;
         wrapText(ctx, currentText, width / 2, yPos, width - 150, fontSize * 1.5);
 
-        // اسم السورة
-        ctx.font = `38px "Cairo"`; ctx.fillStyle = '#9ca3af'; ctx.shadowBlur = 0;
+        // اسم السورة في الأسفل
+        ctx.font = `38px "Cairo"`; 
+        ctx.fillStyle = '#9ca3af'; 
+        ctx.shadowBlur = 0;
         ctx.fillText(`سورة ${surahGlobalName}`, width / 2, height - 150);
 
         if (mediaRecorder.state === 'recording') {
@@ -326,10 +331,12 @@ function downloadVideo() {
     a.href = url; a.download = `Quran_Reels_${Date.now()}.webm`;
     document.body.appendChild(a); a.click();
     
+    // استعادة شكل زر التصدير
     DOM.exportBtn.innerHTML = `<i data-lucide="download"></i> تصدير الفيديو (WebM)`;
     DOM.exportBtn.disabled = false; lucide.createIcons();
 }
 
+// دالة لكسر السطور في الكانفاس لتناسب أبعاد الموبايل
 function wrapText(context, text, x, y, maxWidth, lineHeight) {
     const words = text.split(' '); 
     let line = ''; 
