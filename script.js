@@ -1,7 +1,7 @@
 /**
  * Quran Studio Pro - Core Application Logic
  * Architecture: Object-Oriented JS (ES6)
- * Features: Audio Visualizer, Canvas Rendering, Proxy Fetching, Chunked Export
+ * Features: Audio Visualizer, Canvas Rendering, Proxy Fetching, Chunked Export, Async Error Handling
  */
 
 const App = {
@@ -196,7 +196,11 @@ const App = {
                 App.State.currentIndex = 0;
 
                 App.UI.updateStatus(`تم استيراد ${App.State.playlist.length} آية`, `سورة ${App.State.surahName}`);
-                App.Audio.loadTrack(0);
+                
+                // تحميل الآية الأولى بصمت استعداداً للتشغيل
+                if (App.State.playlist.length > 0) {
+                    App.DOM.coreAudio.src = App.State.proxyUrl + encodeURIComponent(App.State.playlist[0].audio);
+                }
 
             } catch (error) {
                 alert("خطأ في جلب البيانات.");
@@ -206,7 +210,7 @@ const App = {
         }
     },
 
-    // 7. إدارة الصوتيات والموجات (تم إصلاح مشكلة الأيقونات)
+    // 7. إدارة الصوتيات والموجات (Asynchronous Audio Management)
     Audio: {
         context: null,
         analyser: null,
@@ -226,47 +230,72 @@ const App = {
             App.State.visualizerData = new Uint8Array(this.analyser.frequencyBinCount);
         },
 
-        loadTrack(index) {
+        // إدارة واجهة زر التشغيل المركزية
+        updatePlayUI(isPlaying) {
+            App.State.isPlaying = isPlaying;
+            if (isPlaying) {
+                App.DOM.btnPlay.innerHTML = `<i data-lucide="pause" class="w-5 h-5 fill-current"></i>`;
+                App.DOM.btnPlay.classList.add('audio-active-pulse');
+            } else {
+                App.DOM.btnPlay.innerHTML = `<i data-lucide="play" class="w-5 h-5 fill-current"></i>`;
+                App.DOM.btnPlay.classList.remove('audio-active-pulse');
+            }
+            lucide.createIcons();
+        },
+
+        async loadTrack(index) {
             if (index >= App.State.playlist.length) return;
             
             const track = App.State.playlist[index];
             App.DOM.coreAudio.src = App.State.proxyUrl + encodeURIComponent(track.audio);
             
             if (App.State.isPlaying || App.State.isExporting) {
-                App.DOM.coreAudio.play().catch(e => console.log("تأخير في التشغيل:", e));
+                try {
+                    await App.DOM.coreAudio.play();
+                } catch (error) {
+                    console.error("خطأ في التحميل/التشغيل التلقائي:", error);
+                    if (App.State.isExporting) App.Export.forceStopWithError("فشل في تحميل المقطع الصوتي.");
+                }
             }
         },
 
-        togglePlay() {
+        async togglePlay() {
             if (App.State.playlist.length === 0) return alert("قم باستيراد الآيات أولاً.");
             
-            if (!this.context) this.initWebAudio();
-            if (this.context.state === 'suspended') this.context.resume();
-
-            if (App.State.isPlaying) {
-                // إيقاف مؤقت
-                App.DOM.coreAudio.pause();
-                if(App.State.mediaType === 'video') App.DOM.mediaVideo.pause();
+            try {
+                if (!this.context) this.initWebAudio();
                 
-                // تحديث الأيقونة بالطريقة الصحيحة
-                App.DOM.btnPlay.innerHTML = `<i data-lucide="play" class="w-5 h-5 fill-current"></i>`;
-                App.DOM.btnPlay.classList.remove('audio-active-pulse');
-            } else {
-                // تشغيل
-                if(App.State.currentIndex >= App.State.playlist.length) {
-                    App.State.currentIndex = 0;
-                    this.loadTrack(0);
+                if (this.context.state === 'suspended') {
+                    await this.context.resume();
                 }
-                App.DOM.coreAudio.play();
-                if(App.State.mediaType === 'video') App.DOM.mediaVideo.play();
-                
-                // تحديث الأيقونة بالطريقة الصحيحة
-                App.DOM.btnPlay.innerHTML = `<i data-lucide="pause" class="w-5 h-5 fill-current"></i>`;
-                App.DOM.btnPlay.classList.add('audio-active-pulse');
+
+                if (App.State.isPlaying) {
+                    // إيقاف التشغيل
+                    App.DOM.coreAudio.pause();
+                    if(App.State.mediaType === 'video') App.DOM.mediaVideo.pause();
+                    this.updatePlayUI(false);
+                } else {
+                    // تشغيل
+                    if(App.State.currentIndex >= App.State.playlist.length) {
+                        App.State.currentIndex = 0;
+                        this.loadTrack(0);
+                    }
+                    
+                    const audioPromise = App.DOM.coreAudio.play();
+                    if (audioPromise !== undefined) await audioPromise;
+
+                    if(App.State.mediaType === 'video') {
+                        const videoPromise = App.DOM.mediaVideo.play();
+                        if (videoPromise !== undefined) await videoPromise;
+                    }
+                    
+                    this.updatePlayUI(true);
+                }
+            } catch (error) {
+                console.error("فشل في استجابة المشغل:", error);
+                alert("تعذر تشغيل المعاينة. قد يكون بسبب سياسة المتصفح أو خطأ في الشبكة.");
+                this.updatePlayUI(false);
             }
-            
-            lucide.createIcons(); // إعادة رسم الأيقونات
-            App.State.isPlaying = !App.State.isPlaying;
         },
 
         handleTrackEnd() {
@@ -274,14 +303,10 @@ const App = {
             if (App.State.currentIndex < App.State.playlist.length) {
                 this.loadTrack(App.State.currentIndex);
             } else {
-                App.State.isPlaying = false;
-                App.DOM.btnPlay.innerHTML = `<i data-lucide="play" class="w-5 h-5 fill-current"></i>`;
-                App.DOM.btnPlay.classList.remove('audio-active-pulse');
-                lucide.createIcons();
-                
+                this.updatePlayUI(false);
                 if(App.State.mediaType === 'video') App.DOM.mediaVideo.pause();
                 
-                // إنهاء التصدير التلقائي
+                // إنهاء التصدير بنجاح
                 if (App.State.isExporting) App.Export.stop();
             }
         }
@@ -298,31 +323,30 @@ const App = {
         },
 
         renderLoop() {
-            // استدعاء دالة الرسم باستمرار (60 FPS)
             App.State.animationId = requestAnimationFrame(() => App.Canvas.renderLoop());
             
             const ctx = this.ctx;
             const w = this.width;
             const h = this.height;
 
-            // 1. رسم الخلفية (صورة أو فيديو أو أسود)
+            // 1. رسم الخلفية
             ctx.filter = `blur(${App.DOM.rngBlur.value}px)`;
             if (App.State.mediaType === 'video') {
                 ctx.drawImage(App.DOM.mediaVideo, 0, 0, w, h);
             } else if (App.State.mediaType === 'image') {
                 ctx.drawImage(App.DOM.mediaImage, 0, 0, w, h);
             } else {
-                ctx.fillStyle = '#0f172a'; // slate-900
+                ctx.fillStyle = '#0f172a';
                 ctx.fillRect(0, 0, w, h);
             }
             ctx.filter = 'none';
 
-            // 2. رسم طبقة التعتيم
+            // 2. التعتيم
             const overlayOpacity = App.DOM.rngOverlay.value / 100;
             ctx.fillStyle = `rgba(0, 0, 0, ${overlayOpacity})`;
             ctx.fillRect(0, 0, w, h);
 
-            // 3. رسم المتخيل الصوتي (Visualizer) إذا كان مفعل
+            // 3. المتخيل الصوتي
             if (App.DOM.chkVisualizer.checked && App.Audio.analyser) {
                 App.Audio.analyser.getByteFrequencyData(App.State.visualizerData);
                 this.drawVisualizer(ctx, w, h);
@@ -337,7 +361,7 @@ const App = {
             const fontSize = parseInt(App.DOM.rngSize.value) * 1.5;
             const fontFam = App.DOM.selFont.value;
 
-            // 5. رسم الآية الحالية
+            // 5. رسم الآية
             if (App.State.playlist.length > 0 && App.State.currentIndex < App.State.playlist.length) {
                 const currentAyah = App.State.playlist[App.State.currentIndex];
                 const text = `${currentAyah.text} ﴿${currentAyah.numberInSurah}﴾`;
@@ -345,24 +369,21 @@ const App = {
                 ctx.font = `bold ${fontSize}px "${fontFam}"`;
                 ctx.fillStyle = App.DOM.inpColor.value;
                 
-                // تأثير الظل الفاخر للنص
                 ctx.shadowColor = 'rgba(0,0,0,0.8)';
                 ctx.shadowBlur = 25;
                 ctx.shadowOffsetY = 10;
                 
                 this.wrapText(ctx, text, w/2, yPos, w - 180, fontSize * 1.6);
                 
-                // إعادة ضبط الظل
                 ctx.shadowBlur = 0;
                 ctx.shadowOffsetY = 0;
 
-                // رسم اسم السورة أسفل الشاشة
                 ctx.font = `40px "Cairo"`;
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
                 ctx.fillText(`سورة ${App.State.surahName}`, w/2, h - 200);
             }
 
-            // 6. رسم العلامة المائية (Watermark)
+            // 6. العلامة المائية
             const watermark = App.DOM.inpWatermark.value;
             if (watermark) {
                 ctx.direction = 'ltr';
@@ -417,54 +438,70 @@ const App = {
         }
     },
 
-    // 9. نظام التصدير المدمج (تم إصلاح مشكلة الصوت وتوافقية المتصفحات)
+    // 9. نظام التصدير المدمج (Robust Export System with Error Handling)
     Export: {
         recorder: null,
         chunks: [],
 
-        start() {
+        setExportUI(isProcessing) {
+            App.State.isExporting = isProcessing;
+            if (isProcessing) {
+                App.DOM.btnExport.classList.add('hidden');
+                App.DOM.progressUI.classList.remove('hidden');
+                App.DOM.progressUI.classList.add('flex');
+                document.getElementById('export-status-text').innerText = "جاري المعالجة...";
+            } else {
+                App.DOM.progressUI.classList.add('hidden');
+                App.DOM.progressUI.classList.remove('flex');
+                App.DOM.btnExport.classList.remove('hidden');
+            }
+        },
+
+        async start() {
             if (App.State.playlist.length === 0) return alert("لا يوجد محتوى لتصديره.");
 
-            // 1. تهيئة واجهة التصدير
-            App.DOM.btnExport.classList.add('hidden');
-            App.DOM.progressUI.classList.remove('hidden');
-            App.DOM.progressUI.classList.add('flex');
-            App.State.isExporting = true;
+            try {
+                this.setExportUI(true);
 
-            // 2. إجبار تهيئة محرك الصوت (لضمان وجود صوت حتى لو لم يضغط المعاينة)
-            if (!App.Audio.context) App.Audio.initWebAudio();
-            if (App.Audio.context.state === 'suspended') App.Audio.context.resume();
+                if (!App.Audio.context) App.Audio.initWebAudio();
+                if (App.Audio.context.state === 'suspended') {
+                    await App.Audio.context.resume();
+                }
 
-            // 3. التقاط الفيديو والصوت
-            const canvasStream = App.DOM.renderCanvas.captureStream(30); // 30 FPS
-            const dest = App.Audio.context.createMediaStreamDestination();
-            
-            // توصيل الصوت لملف التصدير وللسماعات في نفس الوقت
-            App.Audio.source.connect(dest);
-            App.Audio.source.connect(App.Audio.context.destination);
+                const canvasStream = App.DOM.renderCanvas.captureStream(30);
+                const dest = App.Audio.context.createMediaStreamDestination();
+                
+                App.Audio.source.connect(dest);
+                App.Audio.source.connect(App.Audio.context.destination);
 
-            const combinedStream = new MediaStream([
-                ...canvasStream.getVideoTracks(),
-                ...dest.stream.getAudioTracks()
-            ]);
+                const combinedStream = new MediaStream([
+                    ...canvasStream.getVideoTracks(),
+                    ...dest.stream.getAudioTracks()
+                ]);
 
-            this.initRecorder(combinedStream);
+                this.initRecorder(combinedStream);
 
-            // 4. إعادة التشغيل من البداية لبدء التسجيل
-            if(App.State.mediaType === 'video') {
-                App.DOM.mediaVideo.currentTime = 0;
-                App.DOM.mediaVideo.play();
+                App.State.currentIndex = 0;
+                
+                if(App.State.mediaType === 'video') {
+                    App.DOM.mediaVideo.currentTime = 0;
+                    await App.DOM.mediaVideo.play();
+                }
+
+                const currentTrack = App.State.playlist[0];
+                App.DOM.coreAudio.src = App.State.proxyUrl + encodeURIComponent(currentTrack.audio);
+                await App.DOM.coreAudio.play();
+
+                this.recorder.start(1000); 
+
+            } catch (error) {
+                console.error("فشل في بدء التصدير:", error);
+                this.forceStopWithError("تعذر بدء التصدير. تأكد من تحميل المصادر بشكل صحيح.");
             }
-            App.State.currentIndex = 0;
-            App.Audio.loadTrack(0);
-            
-            this.recorder.start(1000); 
         },
 
         initRecorder(stream) {
             this.chunks = [];
-            
-            // البحث عن أفضل صيغة مدعومة في متصفح المستخدم
             const types = [
                 'video/webm;codecs=vp9,opus',
                 'video/webm;codecs=vp8,opus',
@@ -492,30 +529,47 @@ const App = {
         stop() {
             if (this.recorder && this.recorder.state !== 'inactive') {
                 this.recorder.stop();
+            } else {
+                this.setExportUI(false); 
             }
+        },
+
+        forceStopWithError(message) {
+            alert(message);
+            if (this.recorder && this.recorder.state !== 'inactive') {
+                this.recorder.onstop = null; 
+                this.recorder.stop();
+            }
+            
+            App.DOM.coreAudio.pause();
+            if(App.State.mediaType === 'video') App.DOM.mediaVideo.pause();
+            
+            App.Audio.updatePlayUI(false);
+            this.setExportUI(false);
         },
 
         saveFile() {
             document.getElementById('export-status-text').innerText = "جاري تجميع الفيديو...";
             
             setTimeout(() => {
-                // حفظ الملف
-                const blob = new Blob(this.chunks, { type: this.recorder.mimeType || 'video/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = `Quran_Reel_${Date.now()}.webm`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-
-                // استعادة شكل الزر والواجهة
-                App.State.isExporting = false;
-                App.DOM.progressUI.classList.add('hidden');
-                App.DOM.progressUI.classList.remove('flex');
-                App.DOM.btnExport.classList.remove('hidden');
-                document.getElementById('export-status-text').innerText = "جاري المعالجة...";
+                try {
+                    const blob = new Blob(this.chunks, { type: this.recorder.mimeType || 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `Quran_Studio_${Date.now()}.webm`;
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    window.URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.error("فشل في حفظ الملف:", error);
+                    alert("حدث خطأ أثناء حفظ الملف النهائي.");
+                } finally {
+                    this.setExportUI(false);
+                }
             }, 800);
         }
     }
